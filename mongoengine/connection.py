@@ -91,8 +91,6 @@ def get_connection(alias=DEFAULT_CONNECTION_NAME, reconnect=False):
         if alias not in _connection_settings:
             msg = 'Connection with alias "%s" has not been defined' % alias
             msg += "\n_connection_settings: {0}".format(_connection_settings)
-            from django.conf import settings
-            msg += "\n settings: {0}".format(settings.MONGOTEST)
             if alias == DEFAULT_CONNECTION_NAME:
                 msg = 'You have not defined a default connection'
             raise ConnectionError(msg)
