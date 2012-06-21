@@ -40,6 +40,11 @@ class EmbeddedDocument(BaseDocument):
         else:
             super(EmbeddedDocument, self).__delattr__(*args, **kwargs)
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self._data == other._data
+        return False
+
 
 class Document(BaseDocument):
     """The base class used for defining the structure and properties of
@@ -221,6 +226,7 @@ class Document(BaseDocument):
                 if cascade_kwargs:  # Allow granular control over cascades
                     kwargs.update(cascade_kwargs)
                 kwargs['_refs'] = _refs
+                #self._changed_fields = []
                 self.cascade_save(**kwargs)
 
         except pymongo.errors.OperationFailure, err:
@@ -240,6 +246,7 @@ class Document(BaseDocument):
         """Recursively saves any references / generic references on an object"""
         from fields import ReferenceField, GenericReferenceField
         _refs = kwargs.get('_refs', []) or []
+
         for name, cls in self._fields.items():
             if not isinstance(cls, (ReferenceField, GenericReferenceField)):
                 continue

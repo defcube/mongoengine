@@ -2,6 +2,23 @@
 Changelog
 =========
 
+Changes in 0.6.12
+=================
+- Fixes scalar lookups for primary_key
+- Fixes error with _delta handling DBRefs
+
+Changes in 0.6.11
+==================
+- Fixed inconsistency handling None values field attrs
+- Fixed map_field embedded db_field issue
+- Fixed .save() _delta issue with DbRefs
+- Fixed Django TestCase
+- Added cmp to Embedded Document
+- Added PULL reverse_delete_rule
+- Fixed CASCADE delete bug
+- Fixed db_field data load error
+- Fixed recursive save with FileField
+
 Changes in 0.6.10
 =================
 - Fixed basedict / baselist to return super(..)

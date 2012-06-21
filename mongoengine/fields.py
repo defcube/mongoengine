@@ -182,7 +182,7 @@ class FloatField(BaseField):
         if isinstance(value, int):
             value = float(value)
         if not isinstance(value, float):
-            self.error('FoatField only accepts float values')
+            self.error('FloatField only accepts float values')
 
         if self.min_value is not None and value < self.min_value:
             self.error('Float value is too small')
@@ -369,7 +369,7 @@ class ComplexDateTimeField(StringField):
         return self._convert_from_string(data)
 
     def __set__(self, instance, value):
-        value = self._convert_from_datetime(value)
+        value = self._convert_from_datetime(value) if value else value
         return super(ComplexDateTimeField, self).__set__(instance, value)
 
     def validate(self, value):
@@ -656,6 +656,7 @@ class ReferenceField(BaseField):
       * NULLIFY     - Updates the reference to null.
       * CASCADE     - Deletes the documents associated with the reference.
       * DENY        - Prevent the deletion of the reference object.
+      * PULL        - Pull the reference from a :class:`~mongoengine.ListField` of references
 
     Alternative syntax for registering delete rules (useful when implementing
     bi-directional delete rules)
@@ -888,6 +889,13 @@ class GridFSProxy(object):
         self_dict = self.__dict__
         self_dict['_fs'] = None
         return self_dict
+
+    def __repr__(self):
+        return '<%s: %s>' % (self.__class__.__name__, self.grid_id)
+
+    def __cmp__(self, other):
+        return cmp((self.grid_id, self.collection_name, self.db_alias),
+                   (other.grid_id, other.collection_name, other.db_alias))
 
     @property
     def fs(self):

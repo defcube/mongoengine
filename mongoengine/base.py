@@ -798,6 +798,7 @@ class BaseDocument(object):
                     dynamic_data[key] = value
         else:
             for key, value in values.items():
+                key = self._reverse_db_field_map.get(key, key)
                 setattr(self, key, value)
 
         # Set any get_fieldname_display methods
@@ -831,13 +832,6 @@ class BaseDocument(object):
                 self._data[name] = value
                 if hasattr(self, '_changed_fields'):
                     self._mark_as_changed(name)
-
-        # Handle None values for required fields
-        if value is None and name in getattr(self, '_fields', {}):
-            self._data[name] = value
-            if hasattr(self, '_changed_fields'):
-                self._mark_as_changed(name)
-            return
 
         if not self._created and name in self._meta.get('shard_key', tuple()):
             from queryset import OperationError
@@ -1049,13 +1043,16 @@ Invalid data to create a `%s` instance.\n%s""".strip() % (cls._class_name, error
             for path in set_fields:
                 parts = path.split('.')
                 d = doc
+                new_path = []
                 for p in parts:
-                    if hasattr(d, '__getattr__'):
-                        d = getattr(p, d)
+                    if isinstance(d, DBRef):
+                        break
                     elif p.isdigit():
                         d = d[int(p)]
-                    else:
+                    elif hasattr(d, 'get'):
                         d = d.get(p)
+                    new_path.append(p)
+                path = '.'.join(new_path)
                 set_data[path] = d
         else:
             set_data = doc

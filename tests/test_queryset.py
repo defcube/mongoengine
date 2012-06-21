@@ -1344,6 +1344,37 @@ class QuerySetTest(unittest.TestCase):
         self.Person.objects(name='Test User').delete()
         self.assertEqual(1, BlogPost.objects.count())
 
+    def test_reverse_delete_rule_cascade_self_referencing(self):
+        """Ensure self-referencing CASCADE deletes do not result in infinite loop
+        """
+        class Category(Document):
+            name = StringField()
+            parent = ReferenceField('self', reverse_delete_rule=CASCADE)
+
+        num_children = 3
+        base = Category(name='Root')
+        base.save()
+
+        # Create a simple parent-child tree
+        for i in range(num_children):
+            child_name = 'Child-%i' % i
+            child = Category(name=child_name, parent=base)
+            child.save()
+
+            for i in range(num_children):
+                child_child_name = 'Child-Child-%i' % i
+                child_child = Category(name=child_child_name, parent=child)
+                child_child.save()
+
+        tree_size = 1 + num_children + (num_children * num_children)
+        self.assertEquals(tree_size, Category.objects.count())
+        self.assertEquals(num_children, Category.objects(parent=base).count())
+
+        # The delete should effectively wipe out the Category collection
+        # without resulting in infinite parent-child cascade recursion
+        base.delete()
+        self.assertEquals(0, Category.objects.count())
+
     def test_reverse_delete_rule_nullify(self):
         """Ensure nullification of references to deleted documents.
         """
@@ -1387,6 +1418,36 @@ class QuerySetTest(unittest.TestCase):
         post.save()
 
         self.assertRaises(OperationError, self.Person.objects.delete)
+
+    def test_reverse_delete_rule_pull(self):
+        """Ensure pulling of references to deleted documents.
+        """
+        class BlogPost(Document):
+            content = StringField()
+            authors = ListField(ReferenceField(self.Person,
+                reverse_delete_rule=PULL))
+
+        BlogPost.drop_collection()
+        self.Person.drop_collection()
+
+        me = self.Person(name='Test User')
+        me.save()
+
+        someoneelse = self.Person(name='Some-one Else')
+        someoneelse.save()
+
+        post = BlogPost(content='Watching TV', authors=[me, someoneelse])
+        post.save()
+
+        another = BlogPost(content='Chilling Out', authors=[someoneelse])
+        another.save()
+
+        someoneelse.delete()
+        post.reload()
+        another.reload()
+
+        self.assertEqual(post.authors, [me])
+        self.assertEqual(another.authors, [])
 
     def test_update(self):
         """Ensure that atomic updates work properly.
@@ -2944,6 +3005,19 @@ class QuerySetTest(unittest.TestCase):
         self.assertEqual(plist[0], (10, True))
         self.assertEqual(plist[1], (20, False))
         self.assertEqual(plist[2], (30, True))
+
+    def test_scalar_primary_key(self):
+
+        class SettingValue(Document):
+            key = StringField(primary_key=True)
+            value = StringField()
+
+        SettingValue.drop_collection()
+        s = SettingValue(key="test", value="test value")
+        s.save()
+
+        val = SettingValue.objects.scalar('key', 'value')
+        self.assertEqual(list(val), [('test', 'test value')])
 
     def test_scalar_cursor_behaviour(self):
         """Ensure that a query returns a valid set of results.

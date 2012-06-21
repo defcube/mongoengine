@@ -1,3 +1,4 @@
+import os
 import pickle
 import pymongo
 import bson
@@ -12,6 +13,8 @@ from mongoengine import *
 from mongoengine.base import NotRegistered, InvalidDocumentError
 from mongoengine.queryset import InvalidQueryError
 from mongoengine.connection import get_db
+
+TEST_IMAGE_PATH = os.path.join(os.path.dirname(__file__), 'mongoengine.png')
 
 
 class DocumentTest(unittest.TestCase):
@@ -660,6 +663,26 @@ class DocumentTest(unittest.TestCase):
         self.assertTrue([('_types', 1), ('title', 1)] in info)
 
         BlogPost.drop_collection()
+
+    def test_db_field_load(self):
+        """Ensure we load data correctly
+        """
+        class Person(Document):
+            name = StringField(required=True)
+            _rank = StringField(required=False, db_field="rank")
+
+            @property
+            def rank(self):
+                return self._rank or "Private"
+
+        Person.drop_collection()
+
+        Person(name="Jack", _rank="Corporal").save()
+
+        Person(name="Fred").save()
+
+        self.assertEquals(Person.objects.get(name="Jack").rank, "Corporal")
+        self.assertEquals(Person.objects.get(name="Fred").rank, "Private")
 
     def test_explicit_geo2d_index(self):
         """Ensure that geo2d indexes work when created via meta[indexes]
@@ -1328,6 +1351,30 @@ class DocumentTest(unittest.TestCase):
         p0.name = 'wpjunior'
         p0.save()
 
+    def test_save_max_recursion_not_hit_with_file_field(self):
+
+        class Foo(Document):
+            name = StringField()
+            picture = FileField()
+            bar = ReferenceField('self')
+
+        Foo.drop_collection()
+
+        a = Foo(name='hello')
+        a.save()
+
+        a.bar = a
+        a.picture = open(TEST_IMAGE_PATH, 'rb')
+        a.save()
+
+        # Confirm can save and it resets the changed fields without hitting
+        # max recursion error
+        b = Foo.objects.with_id(a.id)
+        b.name='world'
+        b.save()
+
+        self.assertEquals(b.picture, b.bar.picture, b.bar.bar.picture)
+
     def test_save_cascades(self):
 
         class Person(Document):
@@ -1590,6 +1637,77 @@ class DocumentTest(unittest.TestCase):
 
         site = Site.objects.first()
         self.assertEqual(site.page.log_message, "Error: Dummy message")
+
+    def test_circular_reference_deltas(self):
+
+        class Person(Document):
+            name = StringField()
+            owns = ListField(ReferenceField('Organization'))
+
+        class Organization(Document):
+            name = StringField()
+            owner = ReferenceField('Person')
+
+        Person.drop_collection()
+        Organization.drop_collection()
+
+        person = Person(name="owner")
+        person.save()
+        organization = Organization(name="company")
+        organization.save()
+
+        person.owns.append(organization)
+        organization.owner = person
+
+        person.save()
+        organization.save()
+
+        p = Person.objects[0].select_related()
+        o = Organization.objects.first()
+        self.assertEquals(p.owns[0], o)
+        self.assertEquals(o.owner, p)
+
+    def test_circular_reference_deltas_2(self):
+
+        class Person( Document ):
+           name = StringField()
+           owns = ListField( ReferenceField( 'Organization' ) )
+           employer = ReferenceField( 'Organization' )
+
+        class Organization( Document ):
+           name = StringField()
+           owner = ReferenceField( 'Person' )
+           employees = ListField( ReferenceField( 'Person' ) )
+
+        Person.drop_collection()
+        Organization.drop_collection()
+
+        person = Person( name="owner" )
+        person.save()
+
+        employee = Person( name="employee" )
+        employee.save()
+
+        organization = Organization( name="company" )
+        organization.save()
+
+        person.owns.append( organization )
+        organization.owner = person
+
+        organization.employees.append( employee )
+        employee.employer = organization
+
+        person.save()
+        organization.save()
+        employee.save()
+
+        p = Person.objects.get(name="owner")
+        e = Person.objects.get(name="employee")
+        o = Organization.objects.first()
+
+        self.assertEquals(p.owns[0], o)
+        self.assertEquals(o.owner, p)
+        self.assertEquals(e.employer, o)
 
     def test_delta(self):
 

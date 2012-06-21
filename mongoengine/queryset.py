@@ -10,7 +10,7 @@ from bson.code import Code
 from mongoengine import signals
 
 __all__ = ['queryset_manager', 'Q', 'InvalidQueryError',
-           'DO_NOTHING', 'NULLIFY', 'CASCADE', 'DENY']
+           'DO_NOTHING', 'NULLIFY', 'CASCADE', 'DENY', 'PULL']
 
 
 # The maximum number of items to display in a QuerySet.__repr__
@@ -21,6 +21,7 @@ DO_NOTHING = 0
 NULLIFY = 1
 CASCADE = 2
 DENY = 3
+PULL = 4
 
 
 class DoesNotExist(Exception):
@@ -619,6 +620,7 @@ class QuerySet(object):
                         "Can't use index on unsubscriptable field (%s)" % err)
                 fields.append(field_name)
                 continue
+
             if field is None:
                 # Look up first field from the document
                 if field_name == 'pk':
@@ -636,8 +638,11 @@ class QuerySet(object):
                 from mongoengine.fields import ReferenceField, GenericReferenceField
                 if isinstance(field, (ReferenceField, GenericReferenceField)):
                     raise InvalidQueryError('Cannot perform join in mongoDB: %s' % '__'.join(parts))
-                # Look up subfield on the previous field
-                new_field = field.lookup_member(field_name)
+                if getattr(field, 'field', None):
+                    new_field = field.field.lookup_member(field_name)
+                else:
+                   # Look up subfield on the previous field
+                    new_field = field.lookup_member(field_name)
                 from base import ComplexBaseField
                 if not new_field and isinstance(field, ComplexBaseField):
                     fields.append(field_name)
@@ -1314,11 +1319,17 @@ class QuerySet(object):
             document_cls, field_name = rule_entry
             rule = doc._meta['delete_rules'][rule_entry]
             if rule == CASCADE:
-                document_cls.objects(**{field_name + '__in': self}).delete(safe=safe)
+                ref_q = document_cls.objects(**{field_name + '__in': self})
+                if doc != document_cls or (doc == document_cls and ref_q.count() > 0):
+                    ref_q.delete(safe=safe)
             elif rule == NULLIFY:
                 document_cls.objects(**{field_name + '__in': self}).update(
                         safe_update=safe,
                         **{'unset__%s' % field_name: 1})
+            elif rule == PULL:
+                document_cls.objects(**{field_name + '__in': self}).update(
+                        safe_update=safe,
+                        **{'pull_all__%s' % field_name: self})
 
         self._collection.remove(self._query, safe=safe)
 
@@ -1485,8 +1496,6 @@ class QuerySet(object):
         def lookup(obj, name):
             chunks = name.split('__')
             for chunk in chunks:
-                if hasattr(obj, '_db_field_map'):
-                    chunk = obj._db_field_map.get(chunk, chunk)
                 obj = getattr(obj, chunk)
             return obj
 

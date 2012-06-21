@@ -82,7 +82,6 @@ class FieldTest(unittest.TestCase):
 
         # Retrive data from db and verify it.
         ret = HandleNoneFields.objects.all()[0]
-
         self.assertEqual(ret.str_fld, None)
         self.assertEqual(ret.int_fld, None)
         self.assertEqual(ret.flt_fld, None)
@@ -912,6 +911,48 @@ class FieldTest(unittest.TestCase):
         self.assertRaises(ValidationError, create_invalid_mapping)
 
         Extensible.drop_collection()
+
+    def test_embedded_mapfield_db_field(self):
+
+        class Embedded(EmbeddedDocument):
+            number = IntField(default=0, db_field='i')
+
+        class Test(Document):
+            my_map = MapField(field=EmbeddedDocumentField(Embedded), db_field='x')
+
+        Test.drop_collection()
+
+        test = Test()
+        test.my_map['DICTIONARY_KEY'] = Embedded(number=1)
+        test.save()
+
+        Test.objects.update_one(inc__my_map__DICTIONARY_KEY__number=1)
+
+        test = Test.objects.get()
+        self.assertEqual(test.my_map['DICTIONARY_KEY'].number, 2)
+        doc = self.db.test.find_one()
+        self.assertEqual(doc['x']['DICTIONARY_KEY']['i'], 2)
+
+    def test_embedded_db_field(self):
+
+        class Embedded(EmbeddedDocument):
+            number = IntField(default=0, db_field='i')
+
+        class Test(Document):
+            embedded = EmbeddedDocumentField(Embedded, db_field='x')
+
+        Test.drop_collection()
+
+        test = Test()
+        test.embedded = Embedded(number=1)
+        test.save()
+
+        Test.objects.update_one(inc__embedded__number=1)
+
+        test = Test.objects.get()
+        self.assertEqual(test.embedded.number, 2)
+        doc = self.db.test.find_one()
+        self.assertEqual(doc['x']['i'], 2)
 
     def test_embedded_document_validation(self):
         """Ensure that invalid embedded documents cannot be assigned to
