@@ -825,9 +825,8 @@ class QuerySet(object):
             doc = self.get(*q_objs, **query)
             return doc, False
         except self._document.DoesNotExist:
-            query2 = query.copy()
-            query2.update(defaults)
-            doc = self._document(**query2)
+            query.update(defaults)
+            doc = self._document(**query)
 
             if auto_save:
                 try:
