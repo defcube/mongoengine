@@ -829,11 +829,7 @@ class QuerySet(object):
             doc = self._document(**query)
 
             if auto_save:
-                try:
-                    doc.save(write_options=write_options)
-                except OperationError:
-                    doc = self.get(*q_objs, **query)
-                    return doc, False
+                doc.save(write_options=write_options)
             return doc, True
 
     def create(self, **kwargs):
